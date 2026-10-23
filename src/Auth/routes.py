@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, BackgroundTasks
 from .schemas import UserCreateModel, UserModel, UserLoginModel, UserBooks , EmailModel,PasswordRequestModel, PasswordResetConfirmModel
 from .service import UserService
 from src.db.main import get_session
@@ -12,6 +12,9 @@ from src.errors import UserAlreadyExists, UserNotFound, InvalidCredentials, Refr
 from src.mail import mail, create_message
 from src.config import Config
 from datetime import timedelta
+from datetime import datetime
+from src.celery_tasks import send_email
+
 
 auth_router = APIRouter()
 user_service = UserService()
@@ -23,18 +26,14 @@ REFRESH_TOKEN_EXPIRY = 2
 async def send_mail(emails :EmailModel):
     emails = emails.addresses
     html = "<h1>Welcome to the app</h1>"
+    subject = "Welcome to our app"
     
-    message = create_message(recipients=emails,
-                             subject="Welcome",
-                             body=html
-        )
-    
-    await mail.send_message(message)
+    send_email.delay(emails, subject, html)
     return {"message":"Email sent successfully"}
 
 
 @auth_router.post('/signup', status_code=status.HTTP_201_CREATED)
-async def create_user_account(user_data: UserCreateModel, session:AsyncSession = Depends(get_session)):
+async def create_user_account(user_data: UserCreateModel, bg_tasks:BackgroundTasks, session:AsyncSession = Depends(get_session)):
     email = user_data.email
     
     user_exists = await user_service.user_exists(email, session)
@@ -47,19 +46,14 @@ async def create_user_account(user_data: UserCreateModel, session:AsyncSession =
     token = create_url_safe_token({"email":email})
     
     link = f"http://{Config.DOMAIN}/api/v1/auth/verify/{token}"
-    html_message = f""" 
+    html = f""" 
     <h1>Verify your email</h1>
     <p>Please click the link below to verify your email</p>
     <a href="{link}">Verify your email</a>
     """
-    
-    message = create_message(
-        recipients=[email],
-        subject = "Welcome",
-        body = html_message
-    )
-    
-    await mail.send_message(message)
+    emails = [email]
+    subject = "Verify your email"
+    send_email.delay(emails ,subject , html)
 
     return {
         "message": "Accoount created! Check email to verify your account",
