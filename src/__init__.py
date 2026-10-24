@@ -21,6 +21,9 @@ app = FastAPI(
     title="Bookly",
     description="A REST API for a book review web service",
     version = version,
+    docs_url='/api/{version}/docs',
+    redoc_url='/api/{version}/redoc',
+    contact={ 'email':'singhvansh@gmail.com'}
 )
 
 
